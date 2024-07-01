@@ -15,10 +15,11 @@ setuptools.setup(
     project_urls = {
         "Bug Tracker": "https://github.com/yaronetokayer/pynemo/issues"
     },
-    license='GNU GPLv3',
+    license='MIT',
     packages=[
         'pynemo'
     ],
     install_requires=[
+        'matplotlib'
     ],
 )
