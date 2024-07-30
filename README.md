@@ -1,2 +1,2 @@
 # pynemo
-python library to issue nemo commands
+python library to issue commands for NEMO and Agama
