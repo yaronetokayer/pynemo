@@ -20,6 +20,8 @@ setuptools.setup(
         'pynemo'
     ],
     install_requires=[
-        'matplotlib'
+        'numpy',
+        'textwrap',
+        'agama'
     ],
 )
