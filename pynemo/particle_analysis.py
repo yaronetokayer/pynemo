@@ -197,3 +197,51 @@ def compute_length_unit_mc(positions, masses, n_iterations=1000, n_mask=100):
         sum_term[it] = total_mass**2 / sum_term[it]
 
     return np.mean(sum_term)
+
+def particle_energy_distribution(positions_velocities, masses, potential, bins=100):
+    r"""
+    Computes the distribution function N(E) for a system of particles.
+    E is the binding energy per unit mass, defined as \Phi(r) - v^2/2,
+    for a particle at 3D position r.
+
+    Parameters:
+    ----------
+    positions_velocities : numpy.ndarray
+        Array containing 3D Cartesian positions and velocities of the particles (shape: (n, 6)).
+        The first three columns are positions, and the last three columns are velocities.
+        Assumes consistent units for position and velocity.
+    masses : numpy.ndarray
+        Masses of the particles (shape: (n,)).
+    potential : agama.Potential
+        Agama potential object used to compute the potential at given 3D locations.
+    bins : int, optional
+        Number of bins for the histogram of the binding energy. Default is 100.
+
+    Returns:
+    -------
+    hist : numpy.ndarray
+        Histogram values in units of mass.
+    bin_midpoints : numpy.ndarray
+        Bin midpoints for the histogram of the binding energy.
+        In units of velocity squared.
+    """
+
+    # Split positions and velocities
+    positions = positions_velocities[:, :3]
+    velocities = positions_velocities[:, 3:]
+
+    # Compute the potential at each position
+    potential_values = potential.potential(positions)
+
+    # Compute the kinetic energy per unit mass for each particle
+    kinetic_energy = 0.5 * np.sum(velocities**2, axis=1)
+
+    # Compute the binding energy per unit mass for each particle
+    binding_energy = potential_values + kinetic_energy
+
+    # Create the histogram of binding energies
+    hist, bin_edges = np.histogram(binding_energy, bins=bins, weights=masses, density=False)
+
+    bin_midpoints = np.abs( 0.5 * (bin_edges[:-1] + bin_edges[1:]) )
+
+    return hist, bin_midpoints
