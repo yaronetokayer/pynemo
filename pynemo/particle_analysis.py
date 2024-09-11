@@ -1,6 +1,7 @@
 import numpy as np
 from astropy.constants import G
 from astropy import units as u
+from scipy.integrate import quad
 from tqdm import tqdm
 
 def radial_mass_profile(r, positions, masses):
@@ -242,6 +243,95 @@ def particle_energy_distribution(positions_velocities, masses, potential, bins=1
     # Create the histogram of binding energies
     hist, bin_edges = np.histogram(binding_energy, bins=bins, weights=masses, density=False)
 
-    bin_midpoints = np.abs( 0.5 * (bin_edges[:-1] + bin_edges[1:]) )
+    bin_midpoints = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
     return hist, bin_midpoints
+
+def density_of_states(E_array, potential, epsrel=1e-8):
+    """
+    Computes the density of states g(E) for a spherically symmetric system potential.
+
+    g(E) is defined as:
+    g(E) = (4 * pi)^2 * integral from 0 to r_max(E) of r^2 * sqrt(2 * (E - Phi(r))) dr,
+    where r_max(E) is the radius where E = Phi(r).  See, e.g., 4.56 in Binney and Tremaine
+
+    Assumes a spherically symmetric potential, where Phi(r) = Phi(x, y, z) with x=r, y=0, z=0.
+
+    Parameters:
+    ----------
+    E_array : numpy.ndarray
+        Array of energies for which to compute the density of states (shape: (m,)).
+    potential : agama.Potential
+        Agama potential object used to compute the potential at given 3D locations.
+    epsrel : float, optional
+        Relative error tolerance for the numerical integration. Default is 1e-8.
+
+    Returns:
+    -------
+    gE : numpy.ndarray
+        Density of states g(E) corresponding to input energy values.
+    """
+    # Define the integrand for g(E)
+    def integrand(r, E):
+        # Assume spherical symmetry: compute potential at (r, 0, 0)
+        phi_r = potential.potential(np.array([[r, 0, 0]]))
+        return np.sqrt(2 * np.abs(E - phi_r)) * r**2
+
+    # Vectorize the computation of g(E) over the energy array
+    gE = np.array([
+        16 * np.pi**2 * quad(integrand, 0, _find_r_max(E, potential), args=(E,), epsrel=epsrel, limit=1000)[0]
+        for E in E_array
+    ])
+
+    return gE
+
+def _find_r_max(E, potential, r_high=100, tol=1e-8, max_iter=100):
+    """
+    Finds the maximum radius r_max(E) where E = Phi(r) using a bisection method.
+
+    Parameters:
+    ----------
+    E : float
+        The energy value for which to find the maximum radius.
+    tol : float, optional
+        Tolerance for convergence. Default is 1e-8.
+    max_iter : int, optional
+        Maximum number of iterations for the bisection method. Default is 100.
+
+    Returns:
+    -------
+    r_max : float
+        The radius where E = Phi(r).
+
+    Raises:
+    ------
+    RuntimeError:
+        If the method does not converge within the maximum number of iterations.
+    """
+    # Define the function to find the root
+    def to_solve(r):
+        # Reshape r to a 2D array for the potential function
+        r = np.array([[r, 0, 0]])
+        return potential.potential(r)[0] - E
+
+    # Set initial bounds for the bisection method
+    r_low = 0  # Start with an initial guess range
+
+    # Ensure that we have a valid range for bisection (signs must be opposite)
+    while to_solve(r_low) * to_solve(r_high) > 0:
+        r_high *= 2  # Expand the upper bound until we find a valid range
+
+    # Bisection method
+    for _ in range(max_iter):
+        r_mid = (r_low + r_high) / 2.0
+        if to_solve(r_mid) > 0:
+            r_high = r_mid
+        else:
+            r_low = r_mid
+
+        # Check for convergence
+        if r_high - r_low < tol:
+            return r_mid
+
+    # If the method did not converge, raise an error
+    raise RuntimeError(f"Bisection method did not converge for E={E} within {max_iter} iterations.")
