@@ -247,7 +247,7 @@ def particle_energy_distribution(positions_velocities, masses, potential, bins=1
 
     return hist, bin_midpoints
 
-def density_of_states(E_array, potential, epsrel=1e-8):
+def density_of_states(E_array, potential, r_trunc=1000, epsrel=1e-8):
     """
     Computes the density of states g(E) for a spherically symmetric system potential.
 
@@ -263,6 +263,8 @@ def density_of_states(E_array, potential, epsrel=1e-8):
         Array of energies for which to compute the density of states (shape: (m,)).
     potential : agama.Potential
         Agama potential object used to compute the potential at given 3D locations.
+    r_trunc: float, optional
+        Radius at which to truncate the r_max for evaluating the integral.  See Natarajan, Hjorth, and Van Kampen (1997). Default is 1000
     epsrel : float, optional
         Relative error tolerance for the numerical integration. Default is 1e-8.
 
@@ -279,20 +281,27 @@ def density_of_states(E_array, potential, epsrel=1e-8):
 
     # Vectorize the computation of g(E) over the energy array
     gE = np.array([
-        16 * np.pi**2 * quad(integrand, 0, _find_r_max(E, potential), args=(E,), epsrel=epsrel, limit=1000)[0]
+        16 * np.pi**2 * quad(integrand, 0, _find_r_max(E, potential, r_trunc), args=(E,), epsrel=epsrel, limit=1000)[0]
         for E in E_array
     ])
 
     return gE
 
-def _find_r_max(E, potential, r_high=100, tol=1e-8, max_iter=100):
+def _find_r_max(E, potential, r_high=100, r_trunc=1000, tol=1e-8, max_iter=100):
     """
-    Finds the maximum radius r_max(E) where E = Phi(r) using a bisection method.
+    Finds the maximum radius r_max(E) where E = Phi(r) using the bisection method,
+    or returns r_trunc if no valid solution is found. See Natarajan, Hjorth, and Van Kampen (1997).
 
     Parameters:
     ----------
     E : float
         The energy value for which to find the maximum radius.
+    potential : agama.Potential
+        The potential object used to compute the potential at a given 3D location.
+    r_high: float, optional
+        Initial guess for the computation of r_max using the bisection method.  Default is 100.
+    r_trunc : float, optional
+        The maximum possible value for r_max. Default is 1000.
     tol : float, optional
         Tolerance for convergence. Default is 1e-8.
     max_iter : int, optional
@@ -301,7 +310,7 @@ def _find_r_max(E, potential, r_high=100, tol=1e-8, max_iter=100):
     Returns:
     -------
     r_max : float
-        The radius where E = Phi(r).
+        The radius where E = Phi(r) or r_trunc if no valid range for bisection is found.
 
     Raises:
     ------
@@ -315,11 +324,14 @@ def _find_r_max(E, potential, r_high=100, tol=1e-8, max_iter=100):
         return potential.potential(r)[0] - E
 
     # Set initial bounds for the bisection method
-    r_low = 0  # Start with an initial guess range
+    r_low, r_high = 0, min(r_high, r_trunc)  # Start with an initial guess range
 
     # Ensure that we have a valid range for bisection (signs must be opposite)
     while to_solve(r_low) * to_solve(r_high) > 0:
         r_high *= 2  # Expand the upper bound until we find a valid range
+        if r_high > r_trunc:
+            # If we exceed r_trunc and still don't have a valid range, return r_trunc
+            return r_trunc
 
     # Bisection method
     for _ in range(max_iter):
@@ -331,7 +343,7 @@ def _find_r_max(E, potential, r_high=100, tol=1e-8, max_iter=100):
 
         # Check for convergence
         if r_high - r_low < tol:
-            return r_mid
+            return min(r_mid, r_trunc)
 
     # If the method did not converge, raise an error
     raise RuntimeError(f"Bisection method did not converge for E={E} within {max_iter} iterations.")

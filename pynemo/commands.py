@@ -23,7 +23,7 @@ def get_dynamical_data(snap, n):
 
     return t, x, v, m
 
-def generate_spherical_shell(inner_radius, outer_radius, num_particles, virial_velocity, masses):
+def generate_spherical_shell(inner_radius, outer_radius, num_particles, virial_velocity, masses, sig1=0.20):
     """
     Generates particle data (positions, velocities, and masses) for a spherical shell of particles.
     The particles are uniformly distributed in space within the spherical shell, and their velocities
@@ -42,6 +42,8 @@ def generate_spherical_shell(inner_radius, outer_radius, num_particles, virial_v
     masses : float or numpy.ndarray
         Masses of the particles in units of Msun. If a single number is provided, all particles will have the same mass.
         If an array is provided, it should have length `num_particles`.
+    sig1 : float, optional (default=0.20)
+        Standard deviation of the log-normal distribution in log-space for the velocity distribution.
 
     Returns:
     -------
@@ -65,7 +67,7 @@ def generate_spherical_shell(inner_radius, outer_radius, num_particles, virial_v
     positions = np.vstack((x, y, z)).T
 
     # Placeholder for velocity magnitudes
-    velocity_magnitudes = infall_velocity(num_particles, virial_velocity)
+    velocity_magnitudes = infall_velocity(num_particles, virial_velocity, sig1=sig1)
 
     # Generate random isotropic velocity directions
     phi_v = np.random.uniform(0, 2 * np.pi, num_particles)
