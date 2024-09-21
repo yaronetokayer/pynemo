@@ -99,6 +99,52 @@ def radial_density_profile(r, positions, masses, method='finite differences'):
         
         return density
 
+def compute_velocity_components_and_anisotropy(positions_velocities):
+    """
+    Computes the radial and tangential components of velocity,
+    the velocity dispersion, and the anisotropy parameter beta
+    for a system of particles.
+    
+    Args:
+    - positions_velocities (numpy.ndarray): Array of particles' positions and velocities
+      Shape: (N, 6), where first 3 columns are x, y, z positions, and last 3 columns are vx, vy, vz velocities.
+    
+    Returns:
+    - v_r (numpy.ndarray): Radial component of velocity for each particle.
+    - v_t (numpy.ndarray): Tangential component of velocity for each particle.
+    - sigma_v_r (float): Velocity dispersion of the radial velocities.
+    - sigma_v_t (float): Velocity dispersion of the tangential velocities.
+    - beta (float): Anisotropy parameter.
+    """
+
+    # Split positions and velocities from the input array
+    positions = positions_velocities[:, :3]
+    velocities = positions_velocities[:, 3:]
+
+    # Calculate radial distances
+    radial_distances = np.linalg.norm(positions, axis=1)
+    
+    # Calculate dot product of position and velocity vectors
+    dot_product = np.einsum('ij,ij->i', positions, velocities)
+    
+    # Radial velocity component
+    v_r = dot_product / radial_distances
+    
+    # Total velocity magnitude
+    v = np.linalg.norm(velocities, axis=1)
+    
+    # Tangential velocity component
+    v_t = np.sqrt(v**2 - v_r**2)
+    
+    # Velocity dispersion (standard deviation)
+    sigma_v_r = np.std(v_r)
+    sigma_v_t = np.std(v_t)
+    
+    # Anisotropy parameter beta
+    beta = 1 - (sigma_v_t**2 / (2 * sigma_v_r**2))
+    
+    return v_r, v_t, sigma_v_r, sigma_v_t, beta
+
 def crossing_time_scale(r, positions, masses):
     """
     Computes the crossing time scale at a given radius for a halo,
@@ -199,9 +245,9 @@ def compute_length_unit_mc(positions, masses, n_iterations=1000, n_mask=100):
 
     return np.mean(sum_term)
 
-def particle_energy_distribution(positions_velocities, masses, potential, bins=100):
+def mass_energy_distribution(positions_velocities, masses, potential, bins=100):
     r"""
-    Computes the distribution function N(E) for a system of particles.
+    Computes the distribution function dM/dE for a system of particles.
     E is the binding energy per unit mass, defined as \Phi(r) - v^2/2,
     for a particle at 3D position r.
 
@@ -220,11 +266,11 @@ def particle_energy_distribution(positions_velocities, masses, potential, bins=1
 
     Returns:
     -------
-    hist : numpy.ndarray
-        Histogram values in units of mass.
+    dNdE : numpy.ndarray
+        Histogram values in units of mass per unit energy.
     bin_midpoints : numpy.ndarray
         Bin midpoints for the histogram of the binding energy.
-        In units of velocity squared.
+        In units of velocity squared (specific energy).
     """
 
     # Split positions and velocities
@@ -245,7 +291,9 @@ def particle_energy_distribution(positions_velocities, masses, potential, bins=1
 
     bin_midpoints = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
-    return hist, bin_midpoints
+    dE = np.diff(bin_midpoints)[0]
+
+    return hist / dE, bin_midpoints
 
 def density_of_states(E_array, potential, r_trunc=1000, epsrel=1e-8):
     """
@@ -287,7 +335,7 @@ def density_of_states(E_array, potential, r_trunc=1000, epsrel=1e-8):
 
     return gE
 
-def _find_r_max(E, potential, r_high=100, r_trunc=1000, tol=1e-8, max_iter=100):
+def _find_r_max(E, potential, r_high=100, r_trunc=10000, tol=1e-8, max_iter=100):
     """
     Finds the maximum radius r_max(E) where E = Phi(r) using the bisection method,
     or returns r_trunc if no valid solution is found. See Natarajan, Hjorth, and Van Kampen (1997).
@@ -301,7 +349,7 @@ def _find_r_max(E, potential, r_high=100, r_trunc=1000, tol=1e-8, max_iter=100):
     r_high: float, optional
         Initial guess for the computation of r_max using the bisection method.  Default is 100.
     r_trunc : float, optional
-        The maximum possible value for r_max. Default is 1000.
+        The maximum possible value for r_max. Default is 10000.
     tol : float, optional
         Tolerance for convergence. Default is 1e-8.
     max_iter : int, optional
@@ -347,3 +395,40 @@ def _find_r_max(E, potential, r_high=100, r_trunc=1000, tol=1e-8, max_iter=100):
 
     # If the method did not converge, raise an error
     raise RuntimeError(f"Bisection method did not converge for E={E} within {max_iter} iterations.")
+
+def distribution_function_e(positions_velocities, masses, potential, bins=100, r_trunc=10000, epsrel=1e-8):
+    """
+    Isotropic distribution function f(E) for particle data, given an agama potential
+
+    Parameters:
+    ----------
+    positions_velocities : numpy.ndarray
+        Array containing 3D Cartesian positions and velocities of the particles (shape: (n, 6)).
+        The first three columns are positions, and the last three columns are velocities.
+        Assumes consistent units for position and velocity.
+    masses : numpy.ndarray
+        Masses of the particles (shape: (n,)).
+    potential : agama.Potential
+        Agama potential object used to compute the potential at given 3D locations.
+    bins : int, optional
+        Number of bins for the histogram of the binding energy. Default is 100.
+    r_trunc: float, optional
+        Radius at which to truncate the r_max for evaluating the integral.  See Natarajan, Hjorth, and Van Kampen (1997). Default is 10000
+    epsrel : float, optional
+        Relative error tolerance for the numerical integration. Default is 1e-8.
+
+
+    Returns:
+    -------
+    f_e : numpy.ndarray
+        Histogram values of f(E).
+    bin_midpoints : numpy.ndarray
+        Bin midpoints for the histogram of the binding energy.
+        In units of velocity squared.
+    """
+
+    dMdE, bin_midpoints = mass_energy_distribution(positions_velocities, masses, potential, bins=bins)
+    g_e = density_of_states(bin_midpoints, potential, r_trunc=r_trunc, epsrel=epsrel)
+    f_e = dMdE / g_e
+
+    return f_e, bin_midpoints
