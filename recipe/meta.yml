@@ -4,7 +4,7 @@ package:
 
 source:
   git_url: https://github.com/yaronetokayer/pynemo.git
-  git_rev: master  # or whichever branch/tag/commit you want to use
+  git_rev: main  # or whichever branch/tag/commit you want to use
 
 build:
   noarch: python
