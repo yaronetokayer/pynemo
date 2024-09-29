@@ -99,7 +99,7 @@ def radial_density_profile(r, positions, masses, method='finite differences'):
         
         return density
 
-def compute_velocity_components_and_anisotropy(positions_velocities):
+def spherical_velocity_data(positions_velocities):
     """
     Computes the radial and tangential components of velocity,
     the velocity dispersion, and the anisotropy parameter beta
@@ -110,6 +110,7 @@ def compute_velocity_components_and_anisotropy(positions_velocities):
       Shape: (N, 6), where first 3 columns are x, y, z positions, and last 3 columns are vx, vy, vz velocities.
     
     Returns:
+    - v (numpy.ndarray): Speed of each particle.
     - v_r (numpy.ndarray): Radial component of velocity for each particle.
     - v_t (numpy.ndarray): Tangential component of velocity for each particle.
     - sigma_v_r (float): Velocity dispersion of the radial velocities.
@@ -136,14 +137,62 @@ def compute_velocity_components_and_anisotropy(positions_velocities):
     # Tangential velocity component
     v_t = np.sqrt(v**2 - v_r**2)
     
-    # Velocity dispersion (standard deviation)
-    sigma_v_r = np.std(v_r)
-    sigma_v_t = np.std(v_t)
+    # Velocity dispersion (rms)
+    sigma_v_r2 = np.mean(v_r**2)
+    sigma_v_t2 = np.mean(v_t**2)
     
     # Anisotropy parameter beta
-    beta = 1 - (sigma_v_t**2 / (2 * sigma_v_r**2))
+    beta = 1 - (sigma_v_t2 / (2 * sigma_v_r2))
     
-    return v_r, v_t, sigma_v_r, sigma_v_t, beta
+    return {
+        'speeds': v,
+        'v_r': v_r, 
+        'v_t': v_t,
+        'sigma_r': np.sqrt(sigma_v_r2),
+        'sigma_t': np.sqrt(sigma_v_t2),
+        'beta': beta
+    }
+
+def beta(positions_velocities):
+    r"""
+    Computes the anisotropy parameter beta for a system of particles.
+    \beta = 1 - \frac{<v_t^2>}{2<v_r^2>}
+    
+    Args:
+    - positions_velocities (numpy.ndarray): Array of particle positions and velocities
+      Shape: (N, 6), where first 3 columns are x, y, z positions, and last 3 columns are vx, vy, vz velocities.
+    
+    Returns:
+    - beta (float): Anisotropy parameter.
+    """
+
+    # Split positions and velocities from the input array
+    positions = positions_velocities[:, :3]
+    velocities = positions_velocities[:, 3:]
+
+    # Calculate radial distances
+    radial_distances = np.linalg.norm(positions, axis=1)
+    
+    # Calculate dot product of position and velocity vectors
+    dot_product = np.einsum('ij,ij->i', positions, velocities)
+    
+    # Radial velocity component
+    v_r = dot_product / radial_distances
+    
+    # Total velocity magnitude
+    v = np.linalg.norm(velocities, axis=1)
+    
+    # Magnitude of tangential velocity component
+    v_t = np.sqrt(v**2 - v_r**2)
+    
+    # Velocity rms
+    v_r_rms = np.mean(v_r**2)
+    v_t_rms = np.mean(v_t**2)
+    
+    # Anisotropy parameter beta
+    beta = 1 - (v_t_rms / (2 * v_r_rms))
+    
+    return beta
 
 def crossing_time_scale(r, positions, masses):
     """
