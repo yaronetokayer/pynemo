@@ -1,0 +1,38 @@
+package:
+  name: pynemo
+  version: "0.0.1"
+
+source:
+  git_url: https://github.com/yaronetokayer/pynemo.git
+  git_rev: master  # or whichever branch/tag/commit you want to use
+
+build:
+  noarch: python
+  script: "{{ PYTHON }} -m pip install . --no-deps --ignore-installed"
+
+requirements:
+  build:
+    - python
+    - pip
+  host:
+    - python
+    - pip
+  run:
+    - python
+    - numpy
+    - astropy
+    - agama
+
+about:
+  home: https://github.com/yaronetokayer/pynemo
+  license: MIT
+  license_file: LICENSE
+  summary: A collection of functions for issuing commands for N-body simulations using NEMO programs
+  description: |
+    pynemo is a package that provides functions to interface with N-body simulations using NEMO programs.
+  doc_url: https://github.com/yaronetokayer/pynemo
+  dev_url: https://github.com/yaronetokayer/pynemo
+
+extra:
+  recipe-maintainers:
+    - yaronetokayer
