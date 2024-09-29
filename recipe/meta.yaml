@@ -21,7 +21,8 @@ requirements:
     - python
     - numpy >=2.0.0
     - astropy
-    - agama
+    # Note agama is required at runtime but it is expected to be preinstalled
+    # - agama
 
 about:
   home: https://github.com/yaronetokayer/pynemo
