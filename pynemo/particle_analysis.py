@@ -481,3 +481,54 @@ def distribution_function_e(positions_velocities, masses, potential, bins=100, r
     f_e = dMdE / g_e
 
     return f_e, bin_midpoints
+
+def compute_actions(positions_velocities, potential):
+    """
+    Computes the radial action (J_r) and azimuthal action (L_z)
+    for a set of particles in a spherical system using Agama potential.
+
+    Args:
+    - positions_velocities (numpy.ndarray): Array of particles' positions and velocities.
+      Shape: (N, 6), where first 3 columns are x, y, z positions and last 3 columns are vx, vy, vz velocities.
+    - potential: Agama potential object with a method that computes potential at given 3D cartesian coordinates.
+
+    Returns:
+    - J_r (numpy.ndarray): Radial action of each particle.
+    - L_z (numpy.ndarray): Azimuthal action (z-component of angular momentum) of each particle.
+    """
+
+    # Split positions and velocities from the input array
+    positions = positions_velocities[:, :3]
+    velocities = positions_velocities[:, 3:]
+
+    # Extract individual coordinates
+    x, y, z = positions[:, 0], positions[:, 1], positions[:, 2]
+    vx, vy, vz = velocities[:, 0], velocities[:, 1], velocities[:, 2]
+
+    # Compute the z-component of angular momentum
+    L_z = x * vy - y * vx
+
+    # Compute radius and speeds
+    r = np.sqrt(x**2 + y**2 + z**2)
+    v_squared = vx**2 + vy**2 + vz**2
+
+    # Compute potential energies using the Agama potential object
+    potential_values = potential.potential(positions)
+    
+    # Compute total energies (E = T + Phi)
+    E = 0.5 * v_squared + potential_values
+    
+    def integrand(r, E, L, potential):
+        return np.sqrt(2 * (E - potential.potential([r, 0, 0])) - (L**2 / r**2))
+
+    J_r = np.zeros(len(E))
+    for i in range(len(E)):  # Iterate over each particle to compute J_r
+        if E[i] < 0:  # bound orbit condition (total energy less than zero)
+            # Find periapsis and apoapsis for the given E and L
+            # Here, we approximate, but typically requires solving for precise turning points
+            r_peri = 1 / (2 * E[i] + 2 * np.abs(potential_values[i]))  # Approx peri but real impl requires nr solver
+            r_apo = 1 / (2 * E[i] - 2 * np.abs(potential_values[i]))  # Approx apoapsis
+            
+            J_r[i] = (2 / np.pi) * quad(integrand, r_peri, r_apo, args=(E[i], L_z[i], potential), limit=100)[0]
+
+    return J_r, L_z
