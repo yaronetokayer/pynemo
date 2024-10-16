@@ -20,8 +20,9 @@ def get_dynamical_data(snap, n):
     x = snap[f'SnapShot/{n}/Particles/Position'].data
     v = snap[f'SnapShot/{n}/Particles/Velocity'].data
     m = snap[f'SnapShot/{n}/Particles/Mass'].data
+    pot = snap[f'SnapShot/{n}/Particles/Potential'].data
 
-    return t, x, v, m
+    return t, x, v, m, pot
 
 def generate_spherical_shell(inner_radius, outer_radius, num_particles, masses, mean_v_r, v_disp):
     """
@@ -76,9 +77,9 @@ def generate_spherical_shell(inner_radius, outer_radius, num_particles, masses, 
 
     ### VELOCITY ###
 
-    v_r = np.random.normal(-v_r_mean, sig, num_particles)
-    v_theta = np.random.normal(0, sig, num_particles)
-    v_phi = np.random.normal(0, sig, num_particles)
+    v_r = np.random.normal(-mean_v_r, v_disp, num_particles)
+    v_theta = np.random.normal(0, v_disp, num_particles)
+    v_phi = np.random.normal(0, v_disp, num_particles)
 
     # Convert spherical velocity components to Cartesian coordinates
     vx = v_r * np.sin(theta) * np.cos(phi) + v_theta * np.cos(theta) * np.cos(phi) - v_phi * np.sin(phi)
@@ -280,6 +281,193 @@ def run_gyrfalcon(**kwargs):
     minutes = int((elapsed_time % 3600) // 60)
     seconds = elapsed_time % 60
     print(f"\nTotal elapsed time: {days}d {hours}h {minutes}m {seconds:.2f}s")
+
+def estimate_memory(n_particles, tstop, step):
+    '''
+    Estimate storage needs of output for gyrfalcON command
+
+    Parameters:
+    ----------
+    n_particles : int
+        Number of particles in the simulation.
+    tstop : float
+        Total integration time (in simulation units).
+    step : float
+        Time between outputs of simulation.
+
+    Returns:
+    -------
+    mem : float
+        Estimated memory of output file in MB
+    '''
+    n = int(tstop / step)
+    # Each particle has 7 attributes, and assuming a double-precision float (8 bytes) for each attribute.
+    bytes_per_particle = 7 * 8
+    total_bytes = n_particles * bytes_per_particle * n
+    
+    return total_bytes / 1e6
+
+def write_gyrfalcon_command(script_filename, **kwargs):
+    """
+    This function sets up a Bash script to run the gyrfalcON N-body simulation code and writes the script to a specified file.
+
+    Parameters:
+    ----------
+    script_filename: str
+        The name of the file where the Bash script will be written.
+    kwargs: dict
+        Dictionary of keyword arguments for the gyrfalcON command. This includes parameters such as input file, output file, 
+        and other simulation settings.
+    """
+    if 'in' not in kwargs:
+        kwargs['in'] = kwargs.pop('in_', '-')
+
+    step = kwargs.get('step')
+    tstop = kwargs.get('tstop')
+    
+    val = " ".join([f"{k}={v}" for k, v in kwargs.items()])
+    cmd = f"gyrfalcON {val}"
+
+    # Calculate estimated memory for different numbers of particles
+    memory_examples = [
+        (1e5, estimate_memory(1e5, tstop, step)),
+        (2e5, estimate_memory(2e5, tstop, step)),
+        (5e5, estimate_memory(5e5, tstop, step)),
+        (1e6, estimate_memory(1e6, tstop, step)),
+    ]
+
+    # Create the memory estimation table as a string
+    memory_table = "\n".join([f"{int(n):>7} particles : {mem:>10.2f} MB" for n, mem in memory_examples])
+
+    # Script template with memory estimation
+    script_content = dedent(f"""
+    #!/bin/bash
+
+    source /home/ymt7/opt/nemo/nemo_start.sh
+
+    echo "Estimated storage needs for different particle counts:"
+    echo "----------------------------------------------"
+    echo "{memory_table}"
+    echo "----------------------------------------------"
+
+    read -p "Would you like to proceed? [Y/n] " -n 1 -r
+    echo    # move to a new line
+    if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
+        if [ -f "{kwargs['out']}" ]; then
+            rm "{kwargs['out']}"
+            echo "The file {kwargs['out']} has been deleted to avoid overwrite error."
+        else
+            echo "The file {kwargs['out']} does not yet exist. Proceeding with command."
+        fi
+
+        # Start timing
+        date1=$(date +"%s")
+
+        # Start a background process to display the elapsed time
+        (
+          while true; do
+            now=$(date +"%s")
+            elapsed=$(($now - $date1))
+            minutes=$(($elapsed / 60))
+            seconds=$(($elapsed % 60))
+            printf "\\rElapsed time: %02d:%02d" $minutes $seconds
+            sleep 1
+          done
+        ) &
+        timer_pid=$!
+
+        {cmd}
+        exit_code=$?
+
+        # End timing
+        date2=$(date +"%s")
+        kill $timer_pid > /dev/null 2>&1
+
+        # Calculate elapsed time
+        diff=$(($date2-$date1))
+
+        printf "\\r"  # Clear the elapsed time line
+        echo "gyrfalcON command exited with code: $exit_code"
+        echo "Simulation completed in $(($diff / 60)) minutes and $(($diff % 60)) seconds."
+
+        # If the command fails, exit with an error code
+        if [ $exit_code -ne 0 ]; then
+            echo "Error: gyrfalcON command failed."
+            exit $exit_code
+        fi
+    else
+        echo "Simulation aborted by user."
+    fi
+    """)
+
+    with open(script_filename, 'w') as script_file:
+        script_file.write(script_content)
+
+    print(f"Script written to {script_filename}")
+
+# def write_gyrfalcon_command(script_filename, **kwargs):
+#     """
+#     This function sets up a Bash script to run the gyrfalcON N-body simulation code and writes the script to a specified file.
+
+#     Parameters:
+#     ----------
+#     script_filename: str
+#         The name of the file where the Bash script will be written.
+#     kwargs: dict
+#         Dictionary of keyword arguments for the gyrfalcON command. This includes parameters such as input file, output file, 
+#         and other simulation settings.
+#     """
+#     if 'in' not in kwargs:
+#         kwargs['in'] = kwargs.pop('in_', '-')
+
+#     step = kwargs.get('step')
+#     tstop = kwargs.get('tstop')
+    
+#     val = " ".join([f"{k}={v}" for k, v in kwargs.items()])
+#     cmd = f"gyrfalcON {val}"
+
+#     # Calculate estimated memory for different numbers of particles
+#     memory_examples = [
+#         (1e5, estimate_memory(1e5, tstop, step)),
+#         (2e5, estimate_memory(2e5, tstop, step)),
+#         (5e5, estimate_memory(5e5, tstop, step)),
+#         (1e6, estimate_memory(1e6, tstop, step)),
+#     ]
+
+#     # Create the memory estimation table as a string
+#     memory_table = "\n".join([f"{int(n):>7} particles : {mem:>10.2f} MB" for n, mem in memory_examples])
+
+#     # Script template with memory estimation
+#     script_content = dedent(f"""
+#     #!/bin/bash
+
+#     source /home/ymt7/opt/nemo/nemo_start.sh
+
+#     echo "Estimated storage needs for different particle counts:"
+#     echo "----------------------------------------------"
+#     echo "{memory_table}"
+#     echo "----------------------------------------------"
+
+#     read -p "Would you like to proceed? [Y/n] " -n 1 -r
+#     echo    # move to a new line
+#     if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
+#         if [ -f "{kwargs['out']}" ]; then
+#             rm "{kwargs['out']}"
+#             echo "The file {kwargs['out']} has been deleted to avoid overwrite error."
+#         else
+#             echo "The file {kwargs['out']} does not yet exist. Proceeding with command."
+#         fi
+
+#         {cmd}
+#     else
+#         echo "Simulation aborted by user."
+#     fi
+#     """)
+
+#     with open(script_filename, 'w') as script_file:
+#         script_file.write(script_content)
+
+#     print(f"Script written to {script_filename}")
 
 # def generate_spherical_shell_old(inner_radius, outer_radius, num_particles, virial_velocity, masses, sig1=0.20):
 #     """
