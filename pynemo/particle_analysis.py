@@ -92,6 +92,10 @@ def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2
     fixed_radii = []
     fixed_densities = []
 
+    # Compute particle distances for use later
+    positions = positions_velocities[:, :3]
+    distances = np.sqrt(np.sum(np.square(positions), axis=1))
+
     for i, is_adaptive in enumerate(bin_types):
         if is_adaptive:
             volume = (4 / 3) * np.pi * radii[i]**3
@@ -101,11 +105,16 @@ def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2
         else:
             if i > 0:
                 delta_m = enclosed_mass[i] - enclosed_mass[i - 1]
-                delta_r = radii[i] - radii[i - 1]
+                # delta_r = radii[i] - radii[i - 1]
                 shell_volume = (4 / 3) * np.pi * (radii[i]**3 - radii[i - 1]**3)
                 density = delta_m / shell_volume
-                avg_radius = (radii[i] + radii[i - 1]) / 2
-                fixed_radii.append(avg_radius)
+
+                # Calculate the median distance for the particles in the current bin
+                bin_indices = (distances > radii[i - 1]) & (distances <= radii[i])
+                median_distance = np.mean(distances[bin_indices])
+
+                # avg_radius = (radii[i] + radii[i - 1]) / 2
+                fixed_radii.append(median_distance)
                 fixed_densities.append(density)
 
     all_radii = np.concatenate((inner_radii, fixed_radii))
