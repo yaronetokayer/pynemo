@@ -27,6 +27,9 @@ def truncNFW_prof(m200, c, tau=2, z=0, cosmo=FlatLambdaCDM(H0=70, Om0=0.3)):
               To get m200, use pot.enclosedMass(m200)
     """
 
+    if not isinstance(m200, u.Quantity):
+        m200 = m200 * u.Msun
+
     rvir = r200_nfw(m200, z=z, cosmo=cosmo)
     rs = rvir / c
     

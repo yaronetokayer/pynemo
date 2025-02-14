@@ -33,9 +33,9 @@ def generate_spherical_shell(inner_radius, outer_radius, num_particles, masses, 
     Parameters:
     ----------
     inner_radius : float
-        Inner radius of the spherical shell (in kpc).
+        Inner radius of the spherical shell.
     outer_radius : float
-        Outer radius of the spherical shell (in kpc).
+        Outer radius of the spherical shell.
     num_particles : int
         Number of particles to generate.
     masses : float or numpy.ndarray
@@ -62,7 +62,7 @@ def generate_spherical_shell(inner_radius, outer_radius, num_particles, masses, 
     if np.isscalar(masses):
         masses = np.full(num_particles, masses)
     elif len(masses) != num_particles:
-        raise ValueError("Length of masses array must match the number of particles.")
+        raise ValueError("Length of masses array must be 1, or match the number of particles.")
 
     ### POSITION ###
 
@@ -307,7 +307,7 @@ def estimate_memory(n_particles, tstop, step):
     
     return total_bytes / 1e6
 
-def write_gyrfalcon_command(script_filename, **kwargs):
+def write_gyrfalcon_command(script_filename, server='mbp', **kwargs):
     """
     This function sets up a Bash script to run the gyrfalcON N-body simulation code and writes the script to a specified file.
 
@@ -315,6 +315,9 @@ def write_gyrfalcon_command(script_filename, **kwargs):
     ----------
     script_filename: str
         The name of the file where the Bash script will be written.
+    server: str, optional
+        The server where the script will run ('mbp' for local MacBook, 'astro' for remote).
+        Defaults to 'mbp'.
     kwargs: dict
         Dictionary of keyword arguments for the gyrfalcON command. This includes parameters such as input file, output file, 
         and other simulation settings.
@@ -327,6 +330,16 @@ def write_gyrfalcon_command(script_filename, **kwargs):
     
     val = " ".join([f"{k}={v}" for k, v in kwargs.items()])
     cmd = f"gyrfalcON {val}"
+
+    # Determine shell type and NEMO source location based on server
+    if server == 'astro':
+        shell = "/bin/bash"
+        nemo_source = "/home/ymt7/opt/nemo/nemo_start.sh"
+    elif server == 'mbp':
+        shell = "/bin/zsh"
+        nemo_source = "/Users/yaronetokayer/nemo/nemo_start.sh"
+    else:
+        raise ValueError("Invalid server. Choose 'mbp' or 'astro'.")
 
     # Calculate estimated memory for different numbers of particles
     memory_examples = [
@@ -341,9 +354,9 @@ def write_gyrfalcon_command(script_filename, **kwargs):
 
     # Script template with memory estimation
     script_content = dedent(f"""
-    #!/bin/bash
+    #!{shell}
 
-    source /home/ymt7/opt/nemo/nemo_start.sh
+    source {nemo_source}
 
     echo "Estimated storage needs for different particle counts:"
     echo "----------------------------------------------"

@@ -7,7 +7,6 @@ from tqdm import tqdm
 
 cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
 
-
 import numpy as np
 
 def radial_mass_profile(positions_velocities, masses, num_particles_per_bin=2500, return_bin_types=False):
@@ -289,7 +288,7 @@ def thin_xy_slice(positions_velocities, width_percentage=0.05):
     # Return the subset of positions_velocities that fall within the slice
     return positions_velocities[mask]
 
-def r_200(positions_velocities, masses, cosmo=cosmo, z=0, g=G):
+def r_200(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G):
     """
     Compute the radius (r_200) within which the average density is 200 times the critical density
     using a bisection method.
@@ -299,13 +298,16 @@ def r_200(positions_velocities, masses, cosmo=cosmo, z=0, g=G):
     positions_velocities : numpy.ndarray
         Array containing 3D Cartesian positions and velocities of the particles (shape: (n, 6)).
         The first three columns are positions, and the last three columns are velocities.
-        Assumes consistent units for position and velocity.
+        Assumes position in kpc if rho_crit is None.
     masses : numpy.ndarray
         Array containing the masses of the particles (shape: (n,)).
+        Assumes units of Msun if rho_crit is None.
+    rho_crit : float, optional
+        Critical density in custom units. If None, it will be computed using the cosmological model and redshift.
     cosmo : astropy.cosmology.FLRW, optional
-        Cosmological model used to compute the critical density. Default is FlatLambdaCDM(H0=70, Om0=0.3).
+        Cosmological model used to compute the critical density if rho_crit is None. Default is FlatLambdaCDM(H0=70, Om0=0.3).
     z : float, optional
-        Redshift at which to compute the critical density. Default is 0 (present day).
+        Redshift at which to compute the critical density if rho_crit is None. Default is 0 (present day).
 
     Returns:
     -------
@@ -327,8 +329,9 @@ def r_200(positions_velocities, masses, cosmo=cosmo, z=0, g=G):
       and maximum radii of the particles, a ValueError is raised indicating no solution within the interval.
     """
 
-    # Compute the critical density at redshift z
-    rho_crit = (3 * cosmo.H(z)**2 / (8 * np.pi * g)).to(u.Msun / u.kpc**3).value
+    if rho_crit == None:
+        # Compute the critical density at redshift z
+        rho_crit = (3 * cosmo.H(z)**2 / (8 * np.pi * g)).to(u.Msun / u.kpc**3).value
 
     # Assuming positions are in kpc and masses in Msun
     positions = positions_velocities[:, :3]
@@ -470,7 +473,7 @@ def estimate_mean_interparticle_separation(positions_velocities):
     
     return mean_separation
 
-def v_esc(r, positions_velocities, masses, g):
+def v_esc(r, positions_velocities, masses, g=G):
     """
     Computes the escape velocity given 3D Cartesian positions of particles and their masses.
     Assumes approximate spherical symmetry centered at the origin.
@@ -583,7 +586,7 @@ def beta(positions_velocities):
     
     return beta
 
-def crossing_time_scale(r, positions_velocities, masses):
+def crossing_time_scale(r, positions_velocities, masses, g=G.to(u.kpc * u.km**2 / u.s**2 / u.Msun).value):
     """
     Computes the crossing time scale (in time units of input velocities) at a given radius for a halo,
     given 3D Cartesian positions of particles and their masses.
@@ -593,42 +596,27 @@ def crossing_time_scale(r, positions_velocities, masses):
     Parameters:
     ----------
     r : array-like or float
-        Radii (in kpc) at which to calculate the crossing time.
+        Radii at which to calculate the crossing time.
     positions_velocities : numpy.ndarray
-        3D Cartesian positions and velocities of the particles in kpc (shape: (n, 6)).
+        3D Cartesian positions and velocities of the particles (shape: (n, 6)).
     masses : numpy.ndarray
-        Masses of the particles in Msun (shape: (n,)).
+        Masses of the particles (shape: (n,)).
+    g : float, optional
+        Gravitational constant in appropriate units. Default is G in kpc, km/s, Msun.
 
     Returns:
     -------
     tau : numpy.ndarray or float
-        Crossing time scale in seconds corresponding to input `r` values.
+        Crossing time scale corresponding to input `r` values.
     """
 
-    positions = positions_velocities[:, :3]
-    
-    # Ensure r is a numpy array if it's a list, otherwise keep it as is
-    if isinstance(r, list):
-        r = np.array(r)
-    
-    # Calculate enclosed mass at each radius
-    m_enclosed = integrated_mass(r, positions, masses) * u.Msun
-    
-    # Calculate volume of spheres with radii r
-    volume = (4 * np.pi * r**3 / 3) * u.kpc**3
-    
     # Calculate average density within each radius
-    rho_bar = m_enclosed / volume
+    rho_bar = average_density(r, positions_velocities, masses)
     
     # Calculate crossing time scale
-    tau = 1 / np.sqrt(G * rho_bar)
+    tau = 1 / np.sqrt(g * rho_bar)
     
-    # Return as float if single value, otherwise as numpy array
-    if isinstance(tau, u.Quantity):
-        tau_value = tau.to(u.s).value
-        return tau_value if tau_value.size > 1 else float(tau_value)
-    else:
-        return float(tau.to(u.s).value)
+    return tau if tau.size > 1 else float(tau)
 
 
 def mass_energy_distribution(positions_velocities, masses, potential, bins=100):
@@ -871,57 +859,38 @@ def compute_actions(positions_velocities, potential):
     return J_r, L_z
 
 
-# def compute_length_unit_mc(positions, masses, n_iterations=1000, n_mask=100):
-#     r"""
-#     Computes the n body length unit \(\frac{1}{M^2}\sum_{i,j \neq i}^n \frac{m_i m_j}{|r_i - r_j|}\)
-#     using a Monte Carlo method. This approach estimates the term by randomly sampling subsets of particles
-#     to approximate the sum over all pairs.
-
-#     Parameters:
-#     ----------
-#     positions : numpy.ndarray
-#         3D Cartesian positions of the particles (shape: (n, 3)).
-#     masses : numpy.ndarray
-#         Masses of the particles (shape: (n,)).
-#     n_iterations : int, optional
-#         Number of Monte Carlo iterations to perform. Default is 1000.
-#     n_mask : int, optional
-#         Number of particles to sample in each iteration. Default is 100.
-
-#     Returns:
-#     -------
-#     float
-#         The estimated gravitational term.
-
-#     Notes:
-#     -----
-#     This method provides an approximation by sampling subsets of particles, which can be significantly
-#     faster than computing the term directly for large datasets. The accuracy of the result depends on
-#     the number of iterations and the size of the sampled subset.
-#     """
-
-#     # Number of particles
-#     n = len(masses)
-
-#     sum_term = np.zeros(n_iterations)
-#     for it in tqdm(range(n_iterations), desc="Monte Carlo Iterations"):
-        
-#         # Randomly select a subset of particles
-#         mask = np.zeros(n, dtype=bool)
-#         mask[np.random.choice(n, n_mask, replace=False)] = True
-        
-#         positions_masked = positions[mask]
-#         masses_masked = masses[mask]
-#         total_mass = np.sum(masses_masked)
-        
-#         # Calculate pairwise distances and sum the terms
-#         for i in range(n_mask):
-#             for j in range(n_mask):
-#                 if i != j:
-#                     distance = np.linalg.norm(positions_masked[i] - positions_masked[j])
-#                     sum_term[it] += masses_masked[i] * masses_masked[j] / distance
+def subtract_com(positions_velocities, masses, chatter=True):
+    """ 
+    Subtract off center of mass positions and velocities.
     
-#         # Normalize by the squared total mass
-#         sum_term[it] = total_mass**2 / sum_term[it]
+    Parameters:
+    ----------
+    positions_velocities : numpy.ndarray
+        Array containing 3D Cartesian positions and velocities of the particles (shape: (n, 6)).
+        The first three columns are positions, and the last three columns are velocities.
+    masses : numpy.ndarray
+        1D array containing the masses of the particles.
 
-#     return np.mean(sum_term)
+    Returns:
+    -------
+    positions_velocities : numpy.ndarray
+        Input positions_velocities with c.o.m. subtracted off.
+    """
+
+    positions = positions_velocities[:, :3].copy()
+    com = np.sum(positions * masses[:, None], axis=0) / np.sum(masses)
+    positions -= com
+
+    if chatter:
+        print('Subtracted off c.o.m. position of ', com)
+        print('New c.o.m. is ', np.sum(positions * masses[:, None], axis=0) / np.sum(masses))
+
+    velocities = positions_velocities[:, 3:].copy()
+    v_com = np.sum(velocities * masses[:, None], axis=0) / np.sum(masses)
+    velocities -= v_com
+
+    if chatter: 
+        print('Subtracted off c.o.m. velocity of ', v_com)
+        print('New c.o.m. velocity is ', np.sum(velocities * masses[:, None], axis=0) / np.sum(masses))
+
+    return np.hstack((positions, velocities))
