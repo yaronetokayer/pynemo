@@ -10,7 +10,7 @@ def truncNFW_prof(m200, c, tau=2, z=0, cosmo=FlatLambdaCDM(H0=70, Om0=0.3)):
 
     Inputs:
     m200: astropy quantity
-        radius of the halo inside which the mass density is 200*rho_c
+        mass of halo within radius inside which the mass density is 200*rho_c.  Units Msun unless specified otherwise
     c: float
         concentration parameter
     tau: float

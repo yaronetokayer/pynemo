@@ -20,9 +20,9 @@ def get_dynamical_data(snap, n):
     x = snap[f'SnapShot/{n}/Particles/Position'].data
     v = snap[f'SnapShot/{n}/Particles/Velocity'].data
     m = snap[f'SnapShot/{n}/Particles/Mass'].data
-    pot = snap[f'SnapShot/{n}/Particles/Potential'].data
+    # pot = snap[f'SnapShot/{n}/Particles/Potential'].data
 
-    return t, x, v, m, pot
+    return t, x, v, m #, pot
 
 def generate_spherical_shell(inner_radius, outer_radius, num_particles, masses, mean_v_r, v_disp):
     """
@@ -307,7 +307,7 @@ def estimate_memory(n_particles, tstop, step):
     
     return total_bytes / 1e6
 
-def write_gyrfalcon_command(script_filename, server='mbp', **kwargs):
+def write_gyrfalcon_command(script_filename, server='mbp', chatter=True, **kwargs):
     """
     This function sets up a Bash script to run the gyrfalcON N-body simulation code and writes the script to a specified file.
 
@@ -416,7 +416,8 @@ def write_gyrfalcon_command(script_filename, server='mbp', **kwargs):
     with open(script_filename, 'w') as script_file:
         script_file.write(script_content)
 
-    print(f"Script written to {script_filename}")
+    if chatter:
+        print(f"Script written to {script_filename}")
 
 # def write_gyrfalcon_command(script_filename, **kwargs):
 #     """

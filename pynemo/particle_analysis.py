@@ -4,6 +4,7 @@ from astropy.constants import G
 from astropy import units as u
 from scipy.integrate import quad
 from tqdm import tqdm
+import warnings
 
 cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
 
@@ -69,7 +70,7 @@ def radial_mass_profile(positions_velocities, masses, num_particles_per_bin=2500
         return np.array(bin_edges), np.array(integrated_mass), bin_types
     return np.array(bin_edges), np.array(integrated_mass)
 
-def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2500, num_outer_subbins=3):
+def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2500, num_outer_subbins=3, return_mass_profile=False):
     """
     Computes the density profile for a spherical system of particles.
     Uses average density for inner bins and finite difference for fixed bins.
@@ -139,7 +140,10 @@ def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2
     all_radii = np.concatenate((inner_radii, fixed_radii))
     all_densities = np.concatenate((inner_densities, fixed_densities))
 
-    return all_radii, all_densities
+    if return_mass_profile:
+        return all_radii, all_densities, radii, enclosed_mass
+    else:
+        return all_radii, all_densities
 
 
 def integrated_mass(r, positions_velocities, masses):
@@ -286,7 +290,7 @@ def thin_xy_slice(positions_velocities, width_percentage=0.05):
     mask = np.abs(positions[:, 2]) < slice_half_width
 
     # Return the subset of positions_velocities that fall within the slice
-    return positions_velocities[mask]
+    return positions[mask][:, :2]
 
 def r_200(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G):
     """
@@ -545,7 +549,7 @@ def spherical_velocity_data(positions_velocities):
         'beta': beta
     }
 
-def beta(positions_velocities):
+def beta(positions_velocities, sampling_factor=1.0):
     r"""
     Computes the anisotropy parameter beta for a system of particles.
     \beta = 1 - \frac{<v_t^2>}{2<v_r^2>}
@@ -553,10 +557,15 @@ def beta(positions_velocities):
     Args:
     - positions_velocities (numpy.ndarray): Array of particle positions and velocities
       Shape: (N, 6), where first 3 columns are x, y, z positions, and last 3 columns are vx, vy, vz velocities.
+    - sampling_factor (float, optional): Fraction of particles to sample. Default is 1.0 (use all particles).
     
     Returns:
     - beta (float): Anisotropy parameter.
     """
+    if sampling_factor < 1.0:
+        num_samples = int(len(positions_velocities) * sampling_factor)
+        indices = np.random.choice(len(positions_velocities), num_samples, replace=False)
+        positions_velocities = positions_velocities[indices]
 
     # Split positions and velocities from the input array
     positions = positions_velocities[:, :3]
@@ -573,14 +582,22 @@ def beta(positions_velocities):
     
     # Total velocity magnitude
     v = np.linalg.norm(velocities, axis=1)
-    
+
     # Magnitude of tangential velocity component
-    v_t = np.sqrt(v**2 - v_r**2)
+    v_t_squared = v**2 - v_r**2
+    # Check for significantly negative values in v_t_squared
+    if np.any(v_t_squared < -1e-4):
+        warnings.warn(
+            "Detected negative tangential velocity squared values below -1e-3. "
+            "This is unphysical. Clipping negative values to zero, but beta may not be accurate.",
+            RuntimeWarning
+        )
+    v_t = np.sqrt(np.maximum(v_t_squared, 0))
     
     # Velocity rms
     v_r_rms = np.mean(v_r**2)
     v_t_rms = np.mean(v_t**2)
-    
+
     # Anisotropy parameter beta
     beta = 1 - (v_t_rms / (2 * v_r_rms))
     
