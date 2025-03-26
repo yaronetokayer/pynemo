@@ -263,14 +263,14 @@ def average_density(r, positions_velocities, masses):
         
 #         return density
 
-def thin_xy_slice(positions_velocities, width_percentage=0.05):
+def thin_xy_slice(positions_velocities, width=0.05):
     """
     Extract a thin slice in the x-y plane centered at z=0.
 
     Parameters:
     ----------
     positions_velocities (numpy.ndarray): 3D Cartesian positions and velocities of the particles (shape: (n, 6)).
-    width_percentage (float, optional): The width of the slice as a percentage of the full radius. Default is 5%.
+    width (float, optional): The width of the slice in units of position. Default is 0.05.
 
     Returns:
     -------
@@ -278,16 +278,8 @@ def thin_xy_slice(positions_velocities, width_percentage=0.05):
     """
     
     positions = positions_velocities[:, :3]
-
-    # Compute the full radius of the spherical system (maximum distance from origin)
-    distances = np.linalg.norm(positions, axis=1)
-    max_radius = np.max(distances)
-
-    # Compute the width of the slice in the z-direction
-    slice_half_width = width_percentage * max_radius / 2
-
-    # Filter particles based on the z-coordinate
-    mask = np.abs(positions[:, 2]) < slice_half_width
+    
+    mask = np.abs(positions[:, 2]) < width / 2
 
     # Return the subset of positions_velocities that fall within the slice
     return positions[mask][:, :2]
