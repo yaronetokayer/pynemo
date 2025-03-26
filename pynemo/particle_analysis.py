@@ -70,7 +70,7 @@ def radial_mass_profile(positions_velocities, masses, num_particles_per_bin=2500
         return np.array(bin_edges), np.array(integrated_mass), bin_types
     return np.array(bin_edges), np.array(integrated_mass)
 
-def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2500, num_outer_subbins=3, return_mass_profile=False):
+def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2500, num_outer_subbins=1, return_mass_profile=False):
     """
     Computes the density profile for a spherical system of particles.
     Uses average density for inner bins and finite difference for fixed bins.
@@ -81,7 +81,8 @@ def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2
     positions_velocities (numpy.ndarray): 3D Cartesian positions and velocities of the particles (shape: (n, 6)).
     masses (numpy.ndarray): Masses of the particles (shape: (n,)).
     num_particles_per_bin (int, optional): Number of particles per bin. Default is 2500.
-    num_outer_subbins (int, optional): Number of logarithmically spaced subbins in the outermost bin. Default is 3.
+    num_outer_subbins (int, optional): Number of logarithmically spaced subbins in the outermost bin. Default is 1.
+                                       Note this only seems to work well for NFW profiles (try 3; use with caution)
 
     Returns:
     -------
