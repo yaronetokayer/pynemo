@@ -329,7 +329,6 @@ def r_200(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G):
     if rho_crit is None:
         # Compute the critical density at redshift z
         rho_crit = (3 * cosmo.H(z)**2 / (8 * np.pi * g)).to(u.Msun / u.kpc**3).value
-
     positions = positions_velocities[:, :3]
 
     # Define the function to find the average density
@@ -348,6 +347,7 @@ def r_200(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G):
 
     def bisection_method(func, a, b, tol, max_iter):
         fa, fb = func(a), func(b)
+
         if fa * fb > 0:
             return None
         
@@ -363,7 +363,7 @@ def r_200(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G):
             else:
                 a, fa = c, fc
 
-            return None
+        return None
     
     r_200 = bisection_method(density_difference, r_guess_min, r_guess_max, tolerance, max_iterations)
 
