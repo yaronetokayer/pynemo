@@ -326,11 +326,10 @@ def r_200(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G):
       and maximum radii of the particles, a ValueError is raised indicating no solution within the interval.
     """
 
-    if rho_crit == None:
+    if rho_crit is None:
         # Compute the critical density at redshift z
         rho_crit = (3 * cosmo.H(z)**2 / (8 * np.pi * g)).to(u.Msun / u.kpc**3).value
 
-    # Assuming positions are in kpc and masses in Msun
     positions = positions_velocities[:, :3]
 
     # Define the function to find the average density
@@ -340,17 +339,17 @@ def r_200(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G):
         return average_density - 200 * rho_crit
 
     # Use the next to minimum and 1000 times the maximum radii from the positions_velocities array
-    r_guess_min = np.sort(np.linalg.norm(positions, axis=1))[2]
+    r_guess_min = np.partition(np.linalg.norm(positions, axis=1), 2)[2]
     r_guess_max = 1000 * np.max(np.linalg.norm(positions, axis=1))
 
     # Bisection method to find r_200
-    tolerance = 1e-4  # Set the tolerance for convergence
+    tolerance = 1e-3  # Set the tolerance for convergence
     max_iterations = 100  # Set the maximum number of iterations
 
     def bisection_method(func, a, b, tol, max_iter):
         fa, fb = func(a), func(b)
         if fa * fb > 0:
-            raise ValueError("No solution found within the provided interval.")
+            return None
         
         for i in range(max_iter):
             c = (a + b) / 2
@@ -363,10 +362,15 @@ def r_200(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G):
                 b, fb = c, fc
             else:
                 a, fa = c, fc
-        
-        raise ValueError("Bisection method did not converge within the maximum number of iterations.")
+
+            return None
     
     r_200 = bisection_method(density_difference, r_guess_min, r_guess_max, tolerance, max_iterations)
+
+    if r_200 is None:
+        warnings.warn("No solution found for r_200. Returning 0.0.", RuntimeWarning)
+        return 0.0
+    
     return r_200
 
 def n_200(positions_velocities, masses, cosmo=cosmo, z=0):
