@@ -87,7 +87,7 @@ def generate_spherical_shell(inner_radius, outer_radius, num_particles, masses, 
     vz = v_r * np.cos(theta) - v_theta * np.sin(theta)
     velocities = np.vstack((vx, vy, vz)).T
 
-    return np.hstack((positions, velocities)), masses
+    return np.hstack((positions, velocities)), masses  # Returns a (num_particles, 6) array with positions (x, y, z) and velocities (vx, vy, vz), and a 1D array of masses
 
 def generate_spherical_shell_li(inner_radius, outer_radius, num_particles, masses, virial_velocity, **kwargs):
     r"""
@@ -117,10 +117,10 @@ def generate_spherical_shell_li(inner_radius, outer_radius, num_particles, masse
         
     Returns:
     -------
-    positions_velocities : numpy.ndarray
+    numpy.ndarray
         A (num_particles, 6) array where the first three elements of each row are the Cartesian positions (in kpc)
         and the next three elements are the velocity components (in km/s).
-    masses : numpy.ndarray
+    numpy.ndarray
         1D array of length `num_particles` representing the masses of the particles (in Msun).
     """
 
@@ -129,7 +129,7 @@ def generate_spherical_shell_li(inner_radius, outer_radius, num_particles, masse
     if np.isscalar(masses):
         masses = np.full(num_particles, masses)
     elif len(masses) != num_particles:
-        raise ValueError("Length of masses array must match the number of particles.")
+        raise ValueError("Length of masses array must be 1, or match the number of particles.")
 
     ### POSITION ###
 
@@ -144,6 +144,8 @@ def generate_spherical_shell_li(inner_radius, outer_radius, num_particles, masse
 
     # Initialize velocities
     velocity_magnitudes = infall_velocity_li(num_particles, virial_velocity, **kwargs)
+    if np.any(velocity_magnitudes < 0):
+        raise ValueError("Invalid velocity magnitudes: negative values detected.")
         
     # Generate random velocity directions
     phi_v = np.random.uniform(0, 2 * np.pi, num_particles)
@@ -156,6 +158,11 @@ def generate_spherical_shell_li(inner_radius, outer_radius, num_particles, masse
         np.sin(theta_v) * np.sin(phi_v), 
         np.cos(theta_v)
         )).T
+    
+    # Ensure radial velocity is inward
+    radial_velocities = np.sum(velocities * positions, axis=1) # Unscaled radial velocity
+    outward_mask = radial_velocities > 0
+    velocities[outward_mask] *= -1
 
     return np.hstack((positions, velocities)), masses
 
