@@ -81,7 +81,8 @@ def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2
     positions_velocities (numpy.ndarray): 3D Cartesian positions and velocities of the particles (shape: (n, 6)).
     masses (numpy.ndarray): Masses of the particles (shape: (n,)).
     num_particles_per_bin (int, optional): Number of particles per bin. Default is 2500.
-    num_outer_subbins (int, optional): Number of logarithmically spaced subbins in the outermost bin. Default is 1.
+    num_outer_subbins (int, optional): Number of logarithmically spaced subbins in the outermost bin.
+                                       Set to 0 to drop the last bin. Default is 1.
                                        Note this only seems to work well for NFW profiles (try 3; use with caution)
 
     Returns:
@@ -103,7 +104,12 @@ def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2
         if is_adaptive:
             volume = (4 / 3) * np.pi * radii[i]**3
             density = enclosed_mass[i] / volume
-            inner_radii.append(radii[i])
+            
+            # Mean radius of enclosed particles
+            enclosed_mask = distances <= radii[i]
+            mean_radius = np.mean(distances[enclosed_mask])
+
+            inner_radii.append(mean_radius)
             inner_densities.append(density)
         else:
             if i > 0:
@@ -118,8 +124,8 @@ def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2
                 fixed_radii.append(median_distance)
                 fixed_densities.append(density)
 
-    # Handle the outermost bin with subbins to improve the resolution of the density profile
-    if len(fixed_radii) > 0:
+    # Handle the outermost bin
+    if num_outer_subbins > 0 and len(fixed_radii) > 1:
         r_outer_min, r_outer_max = fixed_radii[-2], fixed_radii[-1]
         subbin_edges = np.logspace(np.log10(r_outer_min), np.log10(r_outer_max), num_outer_subbins + 1)
         subbin_radii = []
@@ -130,13 +136,17 @@ def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2
             subbin_distances = distances[subbin_mask]
             subbin_mass = np.sum(masses[subbin_mask])
             subbin_volume = (4 / 3) * np.pi * (subbin_edges[j + 1]**3 - subbin_edges[j]**3)
-            
+
             if len(subbin_distances) > 0:
                 subbin_radii.append(np.median(subbin_distances))
                 subbin_densities.append(subbin_mass / subbin_volume)
 
         fixed_radii = np.concatenate((fixed_radii[:-1], subbin_radii))
         fixed_densities = np.concatenate((fixed_densities[:-1], subbin_densities))
+
+    elif num_outer_subbins == 0 and len(fixed_radii) > 0:
+        fixed_radii = fixed_radii[:-1]
+        fixed_densities = fixed_densities[:-1]
 
     all_radii = np.concatenate((inner_radii, fixed_radii))
     all_densities = np.concatenate((inner_densities, fixed_densities))
@@ -145,6 +155,82 @@ def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2
         return all_radii, all_densities, radii, enclosed_mass
     else:
         return all_radii, all_densities
+
+# def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2500, num_outer_subbins=1, return_mass_profile=False):
+#     """
+#     Computes the density profile for a spherical system of particles.
+#     Uses average density for inner bins and finite difference for fixed bins.
+#     The outermost bin is subdivided into logarithmically spaced subbins. 
+
+#     Parameters:
+#     ----------
+#     positions_velocities (numpy.ndarray): 3D Cartesian positions and velocities of the particles (shape: (n, 6)).
+#     masses (numpy.ndarray): Masses of the particles (shape: (n,)).
+#     num_particles_per_bin (int, optional): Number of particles per bin. Default is 2500.
+#     num_outer_subbins (int, optional): Number of logarithmically spaced subbins in the outermost bin. Default is 1.
+#                                        Note this only seems to work well for NFW profiles (try 3; use with caution)
+
+#     Returns:
+#     -------
+#     tuple of numpy.ndarray: Radii of the bins and corresponding densities.
+#     """
+#     radii, enclosed_mass, bin_types = radial_mass_profile(positions_velocities, masses, num_particles_per_bin, return_bin_types=True)
+
+#     inner_radii = []
+#     inner_densities = []
+#     fixed_radii = []
+#     fixed_densities = []
+
+#     # Compute particle distances for use later
+#     positions = positions_velocities[:, :3]
+#     distances = np.sqrt(np.sum(np.square(positions), axis=1))
+
+#     for i, is_adaptive in enumerate(bin_types):
+#         if is_adaptive:
+#             volume = (4 / 3) * np.pi * radii[i]**3
+#             density = enclosed_mass[i] / volume
+#             inner_radii.append(radii[i])
+#             inner_densities.append(density)
+#         else:
+#             if i > 0:
+#                 delta_m = enclosed_mass[i] - enclosed_mass[i - 1]
+#                 shell_volume = (4 / 3) * np.pi * (radii[i]**3 - radii[i - 1]**3)
+#                 density = delta_m / shell_volume
+
+#                 # Calculate the median distance for the particles in the current bin
+#                 bin_indices = (distances > radii[i - 1]) & (distances <= radii[i])
+#                 median_distance = np.median(distances[bin_indices])
+
+#                 fixed_radii.append(median_distance)
+#                 fixed_densities.append(density)
+
+#     # Handle the outermost bin with subbins to improve the resolution of the density profile
+#     if len(fixed_radii) > 0:
+#         r_outer_min, r_outer_max = fixed_radii[-2], fixed_radii[-1]
+#         subbin_edges = np.logspace(np.log10(r_outer_min), np.log10(r_outer_max), num_outer_subbins + 1)
+#         subbin_radii = []
+#         subbin_densities = []
+
+#         for j in range(num_outer_subbins):
+#             subbin_mask = (distances > subbin_edges[j]) & (distances <= subbin_edges[j + 1])
+#             subbin_distances = distances[subbin_mask]
+#             subbin_mass = np.sum(masses[subbin_mask])
+#             subbin_volume = (4 / 3) * np.pi * (subbin_edges[j + 1]**3 - subbin_edges[j]**3)
+            
+#             if len(subbin_distances) > 0:
+#                 subbin_radii.append(np.median(subbin_distances))
+#                 subbin_densities.append(subbin_mass / subbin_volume)
+
+#         fixed_radii = np.concatenate((fixed_radii[:-1], subbin_radii))
+#         fixed_densities = np.concatenate((fixed_densities[:-1], subbin_densities))
+
+#     all_radii = np.concatenate((inner_radii, fixed_radii))
+#     all_densities = np.concatenate((inner_densities, fixed_densities))
+
+#     if return_mass_profile:
+#         return all_radii, all_densities, radii, enclosed_mass
+#     else:
+#         return all_radii, all_densities
 
 
 def integrated_mass(r, positions_velocities, masses):
