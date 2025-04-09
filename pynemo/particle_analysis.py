@@ -156,83 +156,6 @@ def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2
     else:
         return all_radii, all_densities
 
-# def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2500, num_outer_subbins=1, return_mass_profile=False):
-#     """
-#     Computes the density profile for a spherical system of particles.
-#     Uses average density for inner bins and finite difference for fixed bins.
-#     The outermost bin is subdivided into logarithmically spaced subbins. 
-
-#     Parameters:
-#     ----------
-#     positions_velocities (numpy.ndarray): 3D Cartesian positions and velocities of the particles (shape: (n, 6)).
-#     masses (numpy.ndarray): Masses of the particles (shape: (n,)).
-#     num_particles_per_bin (int, optional): Number of particles per bin. Default is 2500.
-#     num_outer_subbins (int, optional): Number of logarithmically spaced subbins in the outermost bin. Default is 1.
-#                                        Note this only seems to work well for NFW profiles (try 3; use with caution)
-
-#     Returns:
-#     -------
-#     tuple of numpy.ndarray: Radii of the bins and corresponding densities.
-#     """
-#     radii, enclosed_mass, bin_types = radial_mass_profile(positions_velocities, masses, num_particles_per_bin, return_bin_types=True)
-
-#     inner_radii = []
-#     inner_densities = []
-#     fixed_radii = []
-#     fixed_densities = []
-
-#     # Compute particle distances for use later
-#     positions = positions_velocities[:, :3]
-#     distances = np.sqrt(np.sum(np.square(positions), axis=1))
-
-#     for i, is_adaptive in enumerate(bin_types):
-#         if is_adaptive:
-#             volume = (4 / 3) * np.pi * radii[i]**3
-#             density = enclosed_mass[i] / volume
-#             inner_radii.append(radii[i])
-#             inner_densities.append(density)
-#         else:
-#             if i > 0:
-#                 delta_m = enclosed_mass[i] - enclosed_mass[i - 1]
-#                 shell_volume = (4 / 3) * np.pi * (radii[i]**3 - radii[i - 1]**3)
-#                 density = delta_m / shell_volume
-
-#                 # Calculate the median distance for the particles in the current bin
-#                 bin_indices = (distances > radii[i - 1]) & (distances <= radii[i])
-#                 median_distance = np.median(distances[bin_indices])
-
-#                 fixed_radii.append(median_distance)
-#                 fixed_densities.append(density)
-
-#     # Handle the outermost bin with subbins to improve the resolution of the density profile
-#     if len(fixed_radii) > 0:
-#         r_outer_min, r_outer_max = fixed_radii[-2], fixed_radii[-1]
-#         subbin_edges = np.logspace(np.log10(r_outer_min), np.log10(r_outer_max), num_outer_subbins + 1)
-#         subbin_radii = []
-#         subbin_densities = []
-
-#         for j in range(num_outer_subbins):
-#             subbin_mask = (distances > subbin_edges[j]) & (distances <= subbin_edges[j + 1])
-#             subbin_distances = distances[subbin_mask]
-#             subbin_mass = np.sum(masses[subbin_mask])
-#             subbin_volume = (4 / 3) * np.pi * (subbin_edges[j + 1]**3 - subbin_edges[j]**3)
-            
-#             if len(subbin_distances) > 0:
-#                 subbin_radii.append(np.median(subbin_distances))
-#                 subbin_densities.append(subbin_mass / subbin_volume)
-
-#         fixed_radii = np.concatenate((fixed_radii[:-1], subbin_radii))
-#         fixed_densities = np.concatenate((fixed_densities[:-1], subbin_densities))
-
-#     all_radii = np.concatenate((inner_radii, fixed_radii))
-#     all_densities = np.concatenate((inner_densities, fixed_densities))
-
-#     if return_mass_profile:
-#         return all_radii, all_densities, radii, enclosed_mass
-#     else:
-#         return all_radii, all_densities
-
-
 def integrated_mass(r, positions_velocities, masses):
     """
     Computes the radial integrated mass profile given 3D Cartesian positions of particles and their masses.
@@ -288,67 +211,44 @@ def average_density(r, positions_velocities, masses):
 
     return average_density
 
-# def radial_density_profile(r, positions_velocities, masses, method='finite differences'):
-#     """
-#     Computes the radial 3D mass density profile given 3D Cartesian positions of particles and their masses.
-#     Assumes approximate spherical symmetry centered at the origin.
+def radial_beta_profile(positions_velocities, num_particles_per_bin=2500):
+    """
+    Computes the radial profile of the velocity anisotropy parameter beta.
 
-#     Parameters:
-#     ----------
-#     r : array-like
-#         Radii at which to calculate the density of the particles.
-#     positions_velocities : numpy.ndarray
-#         3D Cartesian positions and velocities of the particles (shape: (n, 3)).
-#     masses : numpy.ndarray
-#         Masses of the particles (shape: (n,)).
-#     method : str, optional
-#         Method to compute the density profile. Options are 'finite differences' (default) and 'direct'.
+    Parameters:
+    ----------
+    xv (numpy.ndarray): Array of particle positions and velocities (shape: (n, 6)).
+    num_particles_per_bin (int, optional): Number of particles per bin. Default is 2500.
 
-#     Returns:
-#     -------
-#     density : numpy.ndarray
-#         3D mass density at each radius in `r`.
-#     r_midpoints : numpy.ndarray, optional
-#         Radii corresponding to the density values when using the 'direct' method. Not returned for 'finite differences' method.
+    Returns:
+    -------
+    tuple of numpy.ndarray: Median radius of each bin and beta value at that radius.
+    """
+    xv = positions_velocities
+    positions = xv[:, :3]
+    distances_squared = np.sum(positions**2, axis=1)
+    sorted_indices = np.argsort(distances_squared)
+    sorted_xv = xv[sorted_indices]
+    sorted_distances = np.sqrt(distances_squared[sorted_indices])
 
-#     Raises:
-#     ------
-#     ValueError
-#         If `r` contains zero when using the 'finite differences' method.
-#     """
-    
-#     if method == 'direct':
-#         integrated_mass = radial_mass_profile(r, positions_velocities, masses)
-        
-#         # Calculate the volume of spherical shells
-#         shell_volumes = (4/3) * np.pi * (r[1:]**3 - r[:-1]**3)
-        
-#         # Compute the differential mass
-#         dM = np.diff(integrated_mass)
-        
-#         # Compute density
-#         density = dM / shell_volumes
-        
-#         # Midpoints for central differences
-#         r_midpoints = 0.5 * (r[1:] + r[:-1])
-    
-#         return density, r_midpoints
+    num_particles = len(xv)
+    median_radii = []
+    beta_values = []
 
-#     elif method == 'finite differences':
-#         # Ensure r does not contain zero to avoid division by zero
-#         if np.any(r == 0):
-#             raise ValueError("Radius array 'r' should not contain zero.")
-        
-#         # Calculate the integrated mass profile
-#         integrated_mass = radial_mass_profile(r, positions_velocities, masses)
-        
-#         # Compute the derivative of the integrated mass profile with respect to radius
-#         dM_dr = np.gradient(integrated_mass, r)
-        
-#         # Compute the mass density by normalizing with the volume of the spherical shell
-#         density = dM_dr / (4 * np.pi * r**2)
-        
-#         return density
+    # Loop over full bins only; skip final incomplete bin
+    # This range ensures each bin has exactly num_particles_per_bin particles
+    for start in range(0, num_particles - num_particles_per_bin + 1, num_particles_per_bin):
+        end = start + num_particles_per_bin
+        bin_xv = sorted_xv[start:end]
+        bin_radii = sorted_distances[start:end]
+
+        bin_beta = beta(bin_xv)
+        median_radius = np.median(bin_radii)
+
+        beta_values.append(bin_beta)
+        median_radii.append(median_radius)
+
+    return np.array(median_radii), np.array(beta_values)
 
 def thin_xy_slice(positions_velocities, width=0.05):
     """
@@ -718,7 +618,6 @@ def crossing_time_scale(r, positions_velocities, masses, g=G.to(u.kpc * u.km**2 
     
     return tau if tau.size > 1 else float(tau)
 
-
 def mass_energy_distribution(positions_velocities, masses, potential, bins=100):
     r"""
     Computes the distribution function dM/dE for a system of particles.
@@ -958,7 +857,6 @@ def compute_actions(positions_velocities, potential):
 
     return J_r, L_z
 
-
 def subtract_com(positions_velocities, masses, chatter=True):
     """ 
     Subtract off center of mass positions and velocities.
@@ -994,3 +892,143 @@ def subtract_com(positions_velocities, masses, chatter=True):
         print('New c.o.m. velocity is ', np.sum(velocities * masses[:, None], axis=0) / np.sum(masses))
 
     return np.hstack((positions, velocities))
+
+### OLD ###
+
+# def radial_density_profile(positions_velocities, masses, num_particles_per_bin=2500, num_outer_subbins=1, return_mass_profile=False):
+#     """
+#     Computes the density profile for a spherical system of particles.
+#     Uses average density for inner bins and finite difference for fixed bins.
+#     The outermost bin is subdivided into logarithmically spaced subbins. 
+
+#     Parameters:
+#     ----------
+#     positions_velocities (numpy.ndarray): 3D Cartesian positions and velocities of the particles (shape: (n, 6)).
+#     masses (numpy.ndarray): Masses of the particles (shape: (n,)).
+#     num_particles_per_bin (int, optional): Number of particles per bin. Default is 2500.
+#     num_outer_subbins (int, optional): Number of logarithmically spaced subbins in the outermost bin. Default is 1.
+#                                        Note this only seems to work well for NFW profiles (try 3; use with caution)
+
+#     Returns:
+#     -------
+#     tuple of numpy.ndarray: Radii of the bins and corresponding densities.
+#     """
+#     radii, enclosed_mass, bin_types = radial_mass_profile(positions_velocities, masses, num_particles_per_bin, return_bin_types=True)
+
+#     inner_radii = []
+#     inner_densities = []
+#     fixed_radii = []
+#     fixed_densities = []
+
+#     # Compute particle distances for use later
+#     positions = positions_velocities[:, :3]
+#     distances = np.sqrt(np.sum(np.square(positions), axis=1))
+
+#     for i, is_adaptive in enumerate(bin_types):
+#         if is_adaptive:
+#             volume = (4 / 3) * np.pi * radii[i]**3
+#             density = enclosed_mass[i] / volume
+#             inner_radii.append(radii[i])
+#             inner_densities.append(density)
+#         else:
+#             if i > 0:
+#                 delta_m = enclosed_mass[i] - enclosed_mass[i - 1]
+#                 shell_volume = (4 / 3) * np.pi * (radii[i]**3 - radii[i - 1]**3)
+#                 density = delta_m / shell_volume
+
+#                 # Calculate the median distance for the particles in the current bin
+#                 bin_indices = (distances > radii[i - 1]) & (distances <= radii[i])
+#                 median_distance = np.median(distances[bin_indices])
+
+#                 fixed_radii.append(median_distance)
+#                 fixed_densities.append(density)
+
+#     # Handle the outermost bin with subbins to improve the resolution of the density profile
+#     if len(fixed_radii) > 0:
+#         r_outer_min, r_outer_max = fixed_radii[-2], fixed_radii[-1]
+#         subbin_edges = np.logspace(np.log10(r_outer_min), np.log10(r_outer_max), num_outer_subbins + 1)
+#         subbin_radii = []
+#         subbin_densities = []
+
+#         for j in range(num_outer_subbins):
+#             subbin_mask = (distances > subbin_edges[j]) & (distances <= subbin_edges[j + 1])
+#             subbin_distances = distances[subbin_mask]
+#             subbin_mass = np.sum(masses[subbin_mask])
+#             subbin_volume = (4 / 3) * np.pi * (subbin_edges[j + 1]**3 - subbin_edges[j]**3)
+            
+#             if len(subbin_distances) > 0:
+#                 subbin_radii.append(np.median(subbin_distances))
+#                 subbin_densities.append(subbin_mass / subbin_volume)
+
+#         fixed_radii = np.concatenate((fixed_radii[:-1], subbin_radii))
+#         fixed_densities = np.concatenate((fixed_densities[:-1], subbin_densities))
+
+#     all_radii = np.concatenate((inner_radii, fixed_radii))
+#     all_densities = np.concatenate((inner_densities, fixed_densities))
+
+#     if return_mass_profile:
+#         return all_radii, all_densities, radii, enclosed_mass
+#     else:
+#         return all_radii, all_densities
+
+# def radial_density_profile(r, positions_velocities, masses, method='finite differences'):
+#     """
+#     Computes the radial 3D mass density profile given 3D Cartesian positions of particles and their masses.
+#     Assumes approximate spherical symmetry centered at the origin.
+
+#     Parameters:
+#     ----------
+#     r : array-like
+#         Radii at which to calculate the density of the particles.
+#     positions_velocities : numpy.ndarray
+#         3D Cartesian positions and velocities of the particles (shape: (n, 3)).
+#     masses : numpy.ndarray
+#         Masses of the particles (shape: (n,)).
+#     method : str, optional
+#         Method to compute the density profile. Options are 'finite differences' (default) and 'direct'.
+
+#     Returns:
+#     -------
+#     density : numpy.ndarray
+#         3D mass density at each radius in `r`.
+#     r_midpoints : numpy.ndarray, optional
+#         Radii corresponding to the density values when using the 'direct' method. Not returned for 'finite differences' method.
+
+#     Raises:
+#     ------
+#     ValueError
+#         If `r` contains zero when using the 'finite differences' method.
+#     """
+    
+#     if method == 'direct':
+#         integrated_mass = radial_mass_profile(r, positions_velocities, masses)
+        
+#         # Calculate the volume of spherical shells
+#         shell_volumes = (4/3) * np.pi * (r[1:]**3 - r[:-1]**3)
+        
+#         # Compute the differential mass
+#         dM = np.diff(integrated_mass)
+        
+#         # Compute density
+#         density = dM / shell_volumes
+        
+#         # Midpoints for central differences
+#         r_midpoints = 0.5 * (r[1:] + r[:-1])
+    
+#         return density, r_midpoints
+
+#     elif method == 'finite differences':
+#         # Ensure r does not contain zero to avoid division by zero
+#         if np.any(r == 0):
+#             raise ValueError("Radius array 'r' should not contain zero.")
+        
+#         # Calculate the integrated mass profile
+#         integrated_mass = radial_mass_profile(r, positions_velocities, masses)
+        
+#         # Compute the derivative of the integrated mass profile with respect to radius
+#         dM_dr = np.gradient(integrated_mass, r)
+        
+#         # Compute the mass density by normalizing with the volume of the spherical shell
+#         density = dM_dr / (4 * np.pi * r**2)
+        
+#         return density
