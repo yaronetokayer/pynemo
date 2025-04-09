@@ -153,7 +153,7 @@ def generate_spherical_shell_li(inner_radius, outer_radius, num_particles, masse
     theta_v = np.arccos(cos_theta_v)
     
     # Stack velocities into array
-    velocities = velocity_magnitudes * np.vstack((
+    velocities = velocity_magnitudes[:, np.newaxis] * np.vstack((
         np.sin(theta_v) * np.cos(phi_v), 
         np.sin(theta_v) * np.sin(phi_v), 
         np.cos(theta_v)
