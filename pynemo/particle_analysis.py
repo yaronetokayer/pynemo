@@ -250,6 +250,46 @@ def radial_beta_profile(positions_velocities, num_particles_per_bin=2500):
 
     return np.array(median_radii), np.array(beta_values)
 
+def radial_v2_profile(positions_velocities, num_particles_per_bin=2500):
+    """
+    Computes the radial profile of the mean squared velocity (v^2).
+
+    Parameters:
+    ----------
+    positions_velocities (numpy.ndarray): 3D Cartesian positions and velocities of the particles (shape: (n, 6)).
+    num_particles_per_bin (int, optional): Number of particles per bin. Default is 2500.
+
+    Returns:
+    -------
+    tuple of numpy.ndarray: Median radius of each bin and corresponding mean squared velocity.
+    """
+
+    positions = positions_velocities[:, :3]
+    velocities = positions_velocities[:, 3:]
+    distances_squared = np.sum(positions**2, axis=1)
+    sorted_indices = np.argsort(distances_squared)
+    sorted_velocities = velocities[sorted_indices]
+    sorted_distances = np.sqrt(distances_squared[sorted_indices])
+
+    num_particles = len(positions_velocities)
+    median_radii = []
+    mean_v2 = []
+
+    # Loop over full bins only; skip final incomplete bin
+    for start in range(0, num_particles - num_particles_per_bin + 1, num_particles_per_bin):
+        end = start + num_particles_per_bin
+        bin_velocities = sorted_velocities[start:end]
+        bin_radii = sorted_distances[start:end]
+
+        v2 = np.sum(bin_velocities**2, axis=1)
+        mean_squared_velocity = np.mean(v2)
+        median_radius = np.median(bin_radii)
+
+        mean_v2.append(mean_squared_velocity)
+        median_radii.append(median_radius)
+
+    return np.array(median_radii), np.array(mean_v2)
+
 def thin_xy_slice(positions_velocities, width=0.05):
     """
     Extract a thin slice in the x-y plane centered at z=0.
