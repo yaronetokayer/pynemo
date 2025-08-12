@@ -4,54 +4,79 @@ from astropy import units as u
 import numpy as np
 import agama
 
-def truncNFW_prof(m200, c, tau=2, z=0, cosmo=FlatLambdaCDM(H0=70, Om0=0.3)):
+def truncNFW_prof(m_in, c, tau=2.0, z=0.0, cosmo=FlatLambdaCDM(H0=70, Om0=0.3), mass_kind='m200'):
     """
     Make a 'truncated NFW' profile specified by the virial mass, concentration parameter, and truncation radius
 
-    Inputs:
-    m200: astropy quantity
-        mass of halo within radius inside which the mass density is 200*rho_c.  Units Msun unless specified otherwise
-    c: float
-        concentration parameter
-    tau: float
-        ratio of truncation radius to virial radius (default is 2)
+    Arguments
+    ---------
+    m_in : float or Quantity
+        If mass_kind='m200': M(<r200) in Msun.
+        If mass_kind='total': total mass (Msun) of the truncated profile.
+    c : float
+        Concentration (r200 / rs).
+    tau : float, optional
+        Truncation radius in units of r200.
+        Default is 2.
     z: float
         redshift (deafult is 0)
     cosmo: astropy cosmology object
+    mass_kind : {'m200','total'} or bool
+        If True, treat m_in as total mass. If False, as m200.
+        (String values preferred.)
 
-    Returns:
-    pot: agama potential object
-    param: dict
-        parameters of pot
-        NOTE: "mass" includes total intergrated mass, which is greater than m200 passed into the function
-              To get m200, use pot.enclosedMass(m200)
+    Returns
+    -------
+    pot : agama.Potential
+    param : dict
+        Includes rs, r200, rcut, c, tau, z, m200, mtot, mass_param (Agama 'mass').
     """
 
-    if not isinstance(m200, u.Quantity):
-        m200 = m200 * u.Msun
+    # normalize inputs
+    if isinstance(mass_kind, bool):
+        mass_kind = 'total' if mass_kind else 'm200'
+    if not isinstance(m_in, u.Quantity):
+        m_in = m_in * u.Msun
 
-    rvir = r200_nfw(m200, z=z, cosmo=cosmo)
-    rs = rvir / c
-    
+    # scale-free fraction f(c,tau) = M(<r200)/M_total
+    f = _fraction_m200_over_total(c, tau)  # dimensionless
+
+    if mass_kind == 'm200':
+        m200 = m_in.to(u.Msun)
+        mtot = (m200.value / f) * u.Msun
+        mass_param = mtot.value
+    elif mass_kind == 'total':
+        mtot = m_in.to(u.Msun)
+        m200 = (f * mtot.value) * u.Msun
+        mass_param = mtot.value
+    else:
+        raise ValueError("mass_kind must be 'm200', 'total', or bool.")
+
+    # physical r200 from the (implied) m200
+    r200 = r200_nfw(m200, z=z, cosmo=cosmo)         # kpc (float)
+    rs   = r200 / c                                 # kpc
+    rcut = tau * r200                               # kpc
+
+    # final, properly scaled potential
     param = dict(
         type='Spheroid',
-        mass=m200.value, scaleRadius=rs.value,
-        alpha=1, beta=3, gamma=1,
-        outerCutoffRadius=tau * rvir.value
-    )
-    pot = agama.Potential(**param)
-
-    # Rescale to get correct mass within rvir
-    param = dict(
-        type='Spheroid',
-        mass=m200.value * m200.value / pot.enclosedMass(rvir.value), 
+        mass=mass_param,
         scaleRadius=rs.value,
         alpha=1, beta=3, gamma=1,
-        outerCutoffRadius=tau * rvir.value
+        outerCutoffRadius=rcut.value,
+        cutoffStrength=5
     )
     pot = agama.Potential(**param)
 
-    return pot, param
+    # package rich metadata
+    meta = dict(param)
+    meta.update(dict(
+        r200=r200, rs=rs, rcut=rcut, c=c, tau=tau, z=z,
+        m200=m200.to_value(u.Msun), mtot=mtot.to_value(u.Msun),
+        mass_kind=mass_kind, mass_param=mass_param
+    ))
+
+    return pot, meta
 
 def m200_nfw(r200, z=0, cosmo=FlatLambdaCDM(H0=70, Om0=0.3)):
     """
@@ -91,9 +116,27 @@ def r200_nfw(m200, z=0, cosmo=FlatLambdaCDM(H0=70, Om0=0.3)):
     Returns:
     r200 - r200 (kpc)
     """
+    # OLD VERSION
+    # h = cosmo.H(z) # Hubble parameter
     
-    h = cosmo.H(z) # Hubble parameter
+    # rho_c = ( 3 * h**2 ) / ( 8 * np.pi * G )
     
-    rho_c = ( 3 * h**2 ) / ( 8 * np.pi * G )
-    
-    return ( ( ( 3 * m200 ) / ( 800 * np.pi * rho_c ) )**(1/3) ).to(u.kpc)
+    # return ( ( ( 3 * m200 ) / ( 800 * np.pi * rho_c ) )**(1/3) ).to(u.kpc)
+
+    m200 = u.Quantity(m200, u.Msun)
+
+    rho_c = cosmo.critical_density(z).to(u.Msun/u.kpc**3)
+
+    r200 = ((3 * m200) / (4 * np.pi * 200 * rho_c))**(1/3)
+
+    return r200.to(u.kpc)
+
+def _fraction_m200_over_total(c, tau):
+    """
+    Scale-free fraction f(c,tau) = M(<r200) / M_total
+    computed once using r200=1, rs=1/c, rcut=tau (mass=1).
+    """
+    base = dict(type='Spheroid', mass=1.0, scaleRadius=1.0/c,
+                alpha=1, beta=3, gamma=1, outerCutoffRadius=tau, cutoffStrength=5)
+    pot = agama.Potential(**base)
+    return pot.enclosedMass(1.0)  # since total mass=1
