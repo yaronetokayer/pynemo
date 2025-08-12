@@ -311,9 +311,9 @@ def thin_xy_slice(positions_velocities, width=0.05):
     # Return the subset of positions_velocities that fall within the slice
     return positions[mask][:, :2]
 
-def r_200(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G):
+def r_vir(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G, Delta_vir=200):
     """
-    Compute the radius (r_200) within which the average density is 200 times the critical density
+    Compute the radius (r_vir) within which the average density is Delta_vir times the critical density
     using a bisection method.
 
     Parameters:
@@ -331,11 +331,13 @@ def r_200(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G):
         Cosmological model used to compute the critical density if rho_crit is None. Default is FlatLambdaCDM(H0=70, Om0=0.3).
     z : float, optional
         Redshift at which to compute the critical density if rho_crit is None. Default is 0 (present day).
+    Delta_vir : float, optional
+        Virial overdensity. Default is 200
 
     Returns:
     -------
     float
-        The radius (r_200) within which the average density is 200 times the critical density.
+        The radius (r_vir) within which the average density is vir times the critical density.
 
     Raises:
     ------
@@ -345,8 +347,8 @@ def r_200(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G):
 
     Notes:
     -----
-    - The function uses a bisection method to iteratively find the radius r_200 where the average density
-      within that radius is 200 times the critical density of the universe at the given redshift.
+    - The function uses a bisection method to iteratively find the radius r_vir where the average density
+      within that radius is Delta_vir times the critical density of the universe at the given redshift.
     - The critical density is computed using the provided cosmological model and redshift.
     - If the density difference function does not change sign over the interval defined by the minimum
       and maximum radii of the particles, a ValueError is raised indicating no solution within the interval.
@@ -361,13 +363,13 @@ def r_200(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G):
     def density_difference(r):
         enclosed_mass = integrated_mass(r, positions_velocities, masses)
         average_density = enclosed_mass / (4/3 * np.pi * r**3)
-        return average_density - 200 * rho_crit
+        return average_density - Delta_vir * rho_crit
 
     # Use the next to minimum and 1000 times the maximum radii from the positions_velocities array
     r_guess_min = np.partition(np.linalg.norm(positions, axis=1), 2)[2]
     r_guess_max = 1000 * np.max(np.linalg.norm(positions, axis=1))
 
-    # Bisection method to find r_200
+    # Bisection method to find r_vir
     tolerance = 1e-3  # Set the tolerance for convergence
     max_iterations = 100  # Set the maximum number of iterations
 
@@ -391,37 +393,37 @@ def r_200(positions_velocities, masses, rho_crit=None, cosmo=cosmo, z=0, g=G):
 
         return None
     
-    r_200 = bisection_method(density_difference, r_guess_min, r_guess_max, tolerance, max_iterations)
+    r_vir = bisection_method(density_difference, r_guess_min, r_guess_max, tolerance, max_iterations)
 
-    if r_200 is None:
-        warnings.warn("No solution found for r_200. Returning 0.0.", RuntimeWarning)
+    if r_vir is None:
+        warnings.warn("No solution found for r_vir. Returning 0.0.", RuntimeWarning)
         return 0.0
     
-    return r_200
+    return r_vir
 
-def n_200(positions_velocities, masses, cosmo=cosmo, z=0):
+def n_vir(positions_velocities, masses, cosmo=cosmo, z=0):
     """
-    Compute the number of particles within r_200 where the average density is 200 times the critical density.
+    Compute the number of particles within r_vir where the average density is Delta_vir times the critical density.
 
     Parameters:
     positions_velocities (numpy.ndarray): Array of particles' positions and velocities.
     masses (numpy.ndarray): Masses of the particles.
 
     Returns:
-    int: Number of particles within r_200.
+    int: Number of particles within r_vir.
     """
 
-    # Compute r_200
-    r200_radius = r_200(positions_velocities, masses, cosmo, z)
+    # Compute r_vir
+    rvir_radius = r_vir(positions_velocities, masses, cosmo, z)
 
     # Compute the distances of all particles from the origin
     positions = positions_velocities[:, :3]
     distances = np.linalg.norm(positions, axis=1)
 
-    # Count the number of particles within r_200
-    n_particles_within_r200 = np.sum(distances < r200_radius)
+    # Count the number of particles within r_vir
+    n_particles_within_rvir = np.sum(distances < rvir_radius)
 
-    return int(n_particles_within_r200)
+    return int(n_particles_within_rvir)
 
 def epsilon_zhang(positions_velocities, masses, cosmo=cosmo, z=0, alpha=2):
     """
@@ -437,7 +439,8 @@ def epsilon_zhang(positions_velocities, masses, cosmo=cosmo, z=0, alpha=2):
     masses : numpy.ndarray
         Array containing the masses of the particles (shape: (n,)).
     cosmo : astropy.cosmology.FLRW, optional
-        Cosmological model used to compute the critical density and <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>r</mi><mn>200</mn></msub></mrow><annotation encoding="application/x-tex">r_{200}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.5806em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.02778em;">r</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3011em;"><span style="top:-2.55em;margin-left:-0.0278em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">200</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>. Default is FlatLambdaCDM(H0=70, Om0=0.3).
+        Cosmological model used to compute the critical density and r_vir.
+        Default is FlatLambdaCDM(H0=70, Om0=0.3).
     z : float, optional
         Redshift at which to compute the critical density. Default is 0 (present day).
     alpha : float, optional
@@ -455,10 +458,10 @@ def epsilon_zhang(positions_velocities, masses, cosmo=cosmo, z=0, alpha=2):
     https://doi.org/10.1093/mnras/stz1370
     """
 
-    r200 = r_200(positions_velocities, masses, cosmo, z)
-    n200 = n_200(positions_velocities, masses, cosmo, z)
+    rvir = r_vir(positions_velocities, masses, cosmo, z)
+    nvir = n_vir(positions_velocities, masses, cosmo, z)
 
-    return alpha * r200 / np.sqrt(n200)
+    return alpha * rvir / np.sqrt(nvir)
 
 def estimate_mean_interparticle_separation(positions_velocities):
     """
